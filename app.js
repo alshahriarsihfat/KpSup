@@ -25,6 +25,7 @@ function init() {
   }
 
   localStorage.setItem(STORAGE.pin, localStorage.getItem(STORAGE.pin) || DEFAULT_PIN);
+  cleanupOrders();
   bindEvents();
   render();
   updateDate();
@@ -218,10 +219,7 @@ function renderReports() {
   `;
 
   const reportSupplierSelect = document.getElementById('report-supplier');
-  if (!reportSupplierSelect.dataset.ready) {
-    reportSupplierSelect.innerHTML = '<option value="">All suppliers</option>' + suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    reportSupplierSelect.dataset.ready = 'true';
-  }
+  reportSupplierSelect.innerHTML = '<option value="">All suppliers</option>' + suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
 
   document.getElementById('reports-table').innerHTML = `
     <table>
@@ -328,10 +326,18 @@ function handleFormSubmit(event) {
     updateSupplier(editingSupplierId, { ...data, visit_days: visitDays });
     showToast('Supplier updated.');
   } else if (editingOrderId) {
+    if (!data.supplier_id) {
+      showToast('Please select a supplier.');
+      return;
+    }
     updateOrder(editingOrderId, { ...data, verified: formData.get('verified') === 'on' });
     showToast('Order updated.');
   } else if (event.target.querySelector('select[name="supplier_id"]')) {
-    addOrder({ ...data, verified: formData.get('verified') === 'on', visit_days: visitDays, supplier_name: getSupplier(data.supplier_id)?.name || '' });
+    if (!data.supplier_id) {
+      showToast('Please select a supplier.');
+      return;
+    }
+    addOrder({ ...data, verified: formData.get('verified') === 'on' });
     showToast('Order added.');
   } else {
     addSupplier({ ...data, visit_days: visitDays });
@@ -375,16 +381,19 @@ function addOrder(data) {
   const orders = getOrders();
   const order = {
     id: `ORD-${String(orders.length + 1001).padStart(4, '0')}`,
-    ...data,
+    supplier_id: data.supplier_id,
+    supplier_name: getSupplier(data.supplier_id)?.name || '',
+    order_date: data.order_date || todayString(),
+    delivery_date: data.delivery_date || nextDate(2),
     amount: Number(data.amount || 0),
     paid_cash: Number(data.paid_cash || 0),
     paid_bank: Number(data.paid_bank || 0),
     due_amount: Math.max(0, Number(data.amount || 0) - (Number(data.paid_cash || 0) + Number(data.paid_bank || 0))),
     status: data.status || 'pending',
     verified: !!data.verified,
+    remarks: data.remarks || '',
     created_at: new Date().toISOString()
   };
-  order.supplier_name = getSupplier(order.supplier_id)?.name || '';
   orders.push(order);
   localStorage.setItem(STORAGE.orders, JSON.stringify(orders));
   syncLocalCopyToCloud();
@@ -396,14 +405,17 @@ function updateOrder(id, data) {
   if (index >= 0) {
     orders[index] = {
       ...orders[index],
-      ...data,
+      supplier_id: data.supplier_id || orders[index].supplier_id,
+      supplier_name: getSupplier(data.supplier_id || orders[index].supplier_id)?.name || orders[index].supplier_name,
+      order_date: data.order_date || orders[index].order_date,
+      delivery_date: data.delivery_date || orders[index].delivery_date,
       amount: Number(data.amount || orders[index].amount || 0),
       paid_cash: Number(data.paid_cash || orders[index].paid_cash || 0),
       paid_bank: Number(data.paid_bank || orders[index].paid_bank || 0),
       due_amount: Math.max(0, Number(data.amount || orders[index].amount || 0) - (Number(data.paid_cash || orders[index].paid_cash || 0) + Number(data.paid_bank || orders[index].paid_bank || 0))),
       status: data.status || orders[index].status,
       verified: data.verified !== undefined ? !!data.verified : orders[index].verified,
-      supplier_name: getSupplier(data.supplier_id || orders[index].supplier_id)?.name || orders[index].supplier_name
+      remarks: data.remarks || orders[index].remarks || ''
     };
     localStorage.setItem(STORAGE.orders, JSON.stringify(orders));
     syncLocalCopyToCloud();
@@ -639,7 +651,8 @@ async function syncLocalCopyToCloud() {
   cloudBusy = true;
   try {
     const suppliers = getSuppliers();
-    const orders = getOrders();
+    const orders = getOrders().map(sanitizeOrder);
+    localStorage.setItem(STORAGE.orders, JSON.stringify(orders));
     await Promise.all([
       Promise.all(suppliers.map(item => supabaseClient.from('suppliers').upsert({ ...item, updated_at: new Date().toISOString() }).select())),
       Promise.all(orders.map(item => supabaseClient.from('orders').upsert({ ...item, updated_at: new Date().toISOString() }).select()))
@@ -647,6 +660,7 @@ async function syncLocalCopyToCloud() {
     updateCloudStatus('Synced');
   } catch (error) {
     updateCloudStatus(`Sync failed: ${error.message}`);
+    console.error('Cloud sync failed:', error);
   } finally {
     cloudBusy = false;
   }
@@ -657,9 +671,40 @@ function updateCloudStatus(message) {
   if (status) status.textContent = message;
 }
 
+function sanitizeOrder(record) {
+  if (!record || typeof record !== 'object') return null;
+  const amount = Number(record.amount || 0);
+  const paid_cash = Number(record.paid_cash || 0);
+  const paid_bank = Number(record.paid_bank || 0);
+  return {
+    id: record.id,
+    supplier_id: record.supplier_id,
+    supplier_name: record.supplier_name || getSupplier(record.supplier_id)?.name || '',
+    order_date: record.order_date || todayString(),
+    delivery_date: record.delivery_date || '',
+    amount,
+    paid_cash,
+    paid_bank,
+    due_amount: Math.max(0, amount - (paid_cash + paid_bank)),
+    status: record.status || 'pending',
+    verified: !!record.verified,
+    remarks: record.remarks || '',
+    created_at: record.created_at || new Date().toISOString(),
+    updated_at: record.updated_at || null
+  };
+}
+
 function getSuppliers() { return JSON.parse(localStorage.getItem(STORAGE.suppliers) || '[]'); }
 function getSupplier(id) { return getSuppliers().find(item => item.id === id) || null; }
-function getOrders() { return JSON.parse(localStorage.getItem(STORAGE.orders) || '[]'); }
+function getOrders() {
+  const orders = JSON.parse(localStorage.getItem(STORAGE.orders) || '[]');
+  return orders.map(sanitizeOrder).filter(Boolean);
+}
+function cleanupOrders() {
+  const orders = JSON.parse(localStorage.getItem(STORAGE.orders) || '[]');
+  const sanitized = orders.map(sanitizeOrder).filter(Boolean);
+  localStorage.setItem(STORAGE.orders, JSON.stringify(sanitized));
+}
 function getUpcomingDeliveries() {
   const today = new Date();
   const end = new Date(today); end.setDate(today.getDate() + 7);
