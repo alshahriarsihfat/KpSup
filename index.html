@@ -1,13 +1,180 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KP Supplier Order Tracking</title>
+  <meta name="description" content="Supplier order tracking with local storage and optional Supabase sync." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="pin-overlay" class="pin-overlay">
+    <div class="pin-card">
+      <div class="pin-icon">📦</div>
+      <h1>KP Supplier Order Tracking</h1>
+      <p>Enter your PIN to continue</p>
+      <div class="pin-dots" id="pin-dots"></div>
+      <div class="pin-error" id="pin-error"></div>
+      <div class="pin-pad" id="pin-pad"></div>
+      <div class="pin-actions">
+        <button class="ghost-btn" id="reset-pin-btn">Reset PIN</button>
+      </div>
+      <small class="pin-hint">Default PIN: 1234</small>
+    </div>
+  </div>
+
+  <div id="app-shell" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-badge">📦</div>
+        <div>
+          <h2>KP Supplier</h2>
+          <p>Visit & Order Tracker</p>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-btn active" data-view="dashboard">📊 Dashboard</button>
+        <button class="nav-btn" data-view="suppliers">👥 Suppliers</button>
+        <button class="nav-btn" data-view="orders">🧾 Orders</button>
+        <button class="nav-btn" data-view="reports">📈 Reports</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div id="cloud-status" class="cloud-status">☁ Local only</div>
+        <button id="cloud-settings-btn" class="secondary-btn">☁ Cloud Sync</button>
+        <button id="lock-btn" class="secondary-btn">🔒 Lock App</button>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Today</p>
+          <h3 id="page-title">Dashboard</h3>
+        </div>
+        <div class="topbar-right">
+          <span id="current-date" class="date-pill"></span>
+          <button id="add-btn" class="primary-btn">＋ New</button>
+        </div>
+      </header>
+
+      <section id="dashboard-view" class="view-panel active">
+        <div class="stats-grid">
+          <article class="stat-card">
+            <h4>Today's Orders</h4>
+            <p id="stat-orders">0</p>
+            <span>Orders entered today</span>
+          </article>
+          <article class="stat-card">
+            <h4>Total Bill</h4>
+            <p id="stat-bill">৳0</p>
+            <span>Today’s order value</span>
+          </article>
+          <article class="stat-card">
+            <h4>Visitors</h4>
+            <p id="stat-visitors">0</p>
+            <span>Suppliers scheduled today</span>
+          </article>
+          <article class="stat-card">
+            <h4>Upcoming Deliveries</h4>
+            <p id="stat-deliveries">0</p>
+            <span>Next 7 days</span>
+          </article>
+        </div>
+
+        <div class="content-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <h4>Upcoming Deliveries</h4>
+            </div>
+            <div id="dashboard-deliveries" class="list-stack"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h4>Today's Visitors</h4>
+            </div>
+            <div id="dashboard-visitors" class="list-stack"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="suppliers-view" class="view-panel">
+        <div class="panel-head">
+          <h4>Suppliers</h4>
+          <button id="add-supplier-btn" class="primary-btn">＋ Add Supplier</button>
+        </div>
+        <div id="suppliers-list" class="card-grid"></div>
+      </section>
+
+      <section id="orders-view" class="view-panel">
+        <div class="panel-head">
+          <h4>Orders</h4>
+          <button id="add-order-btn" class="primary-btn">＋ Add Order</button>
+        </div>
+        <div id="orders-list" class="table-card"></div>
+      </section>
+
+      <section id="reports-view" class="view-panel">
+        <div class="panel-head">
+          <h4>Reports</h4>
+          <button id="export-csv-btn" class="secondary-btn">⬇ Export CSV</button>
+        </div>
+        <div class="filters">
+          <label>From<input id="report-from" type="date" /></label>
+          <label>To<input id="report-to" type="date" /></label>
+          <label>Supplier<select id="report-supplier"></select></label>
+          <label>Status<select id="report-status">
+            <option value="">All</option>
+            <option value="pending">Pending</option>
+            <option value="delivered">Delivered</option>
+            <option value="cancelled">Cancelled</option>
+          </select></label>
+        </div>
+        <div id="report-summary" class="summary-card"></div>
+        <div id="reports-table" class="table-card"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modal-title">Add Item</h3>
+        <button id="close-modal-btn" class="icon-btn">✕</button>
+      </div>
+      <form id="modal-form"></form>
+    </div>
+  </div>
+
+  <div id="cloud-settings-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Cloud Sync Setup</h3>
+        <button id="close-cloud-modal-btn" class="icon-btn">✕</button>
+      </div>
+      <p class="muted">Enter your Supabase URL and anon key once. Then the app will sync from any device in real time.</p>
+      <div class="form-grid">
+        <div class="field full">
+          <label>Supabase Project URL</label>
+          <input id="cloud-url" type="text" placeholder="https://your-project.supabase.co" />
+        </div>
+        <div class="field full">
+          <label>Supabase Anon Key</label>
+          <textarea id="cloud-key" rows="4" placeholder="eyJhbGciOi..."></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" id="disconnect-cloud-btn" class="ghost-btn">Use Local Only</button>
+        <button type="button" id="save-cloud-btn" class="primary-btn">Save & Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+</body>
 </html>
 
