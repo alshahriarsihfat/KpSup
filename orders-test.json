@@ -1,1 +1,0 @@
-[{"id":"ORD-TEST-1","supplier_id":"sup-1","supplier_name":"Beximco Pharma","order_date":"2026-08-01","delivery_date":"2026-08-10","amount":100,"paid_cash":0,"paid_bank":0,"due_amount":100,"status":"pending","verified":false,"remarks":"test","created_at":"2026-08-01T00:00:00Z"}]
