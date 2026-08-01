@@ -1,6 +1,0 @@
-{
-  "name": "Khan Pharmacy Staff Portal",
-  "description": "A premium, high-fidelity employee management, time-tracking, and roster analytics portal for Khan Pharmacy.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
